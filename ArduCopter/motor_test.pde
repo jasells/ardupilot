@@ -67,11 +67,11 @@ static void motor_test_output()
 
 // mavlink_motor_test_check - perform checks before motor tests can begin
 //  return true if tests can continue, false if not
-static bool mavlink_motor_test_check(mavlink_channel_t chan, bool check_rc)
+static bool mavlink_motor_test_check(mavlink_channel_t chan)
 {
     // check rc has been calibrated
     pre_arm_rc_checks();
-    if(check_rc && !ap.pre_arm_rc_check) {
+    if(!ap.pre_arm_rc_check) {
         gcs[chan-MAVLINK_COMM_0].send_text_P(SEVERITY_HIGH,PSTR("Motor Test: RC not calibrated"));
         return false;
     }
@@ -98,11 +98,8 @@ static uint8_t mavlink_motor_test_start(mavlink_channel_t chan, uint8_t motor_se
 {
     // if test has not started try to start it
     if (!ap.motor_test) {
-        /* perform checks that it is ok to start test
-           The RC calibrated check can be skipped if direct pwm is
-           supplied
-        */
-        if (!mavlink_motor_test_check(chan, throttle_type != 1)) {
+        // perform checks that it is ok to start test
+        if (!mavlink_motor_test_check(chan)) {
             return MAV_RESULT_FAILED;
         } else {
             // start test
