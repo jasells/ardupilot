@@ -43,35 +43,57 @@ static void init_sonar(void)
 }
 #endif
 
+// obstacle detection information
+static struct
+{
+    // have we detected an obstacle?
+    uint8_t Ldetected_count;
+    uint8_t Rdetected_count;
+
+    //float turn_angle;
+    uint16_t sonar1_distance_cm;
+    uint16_t sonar2_distance_cm;
+    uint16_t sonar3_distance_cm;
+
+    // time when we last detected an obstacle, in milliseconds
+    uint32_t Ldetected_time_ms;
+    uint32_t Rdetected_time_ms;
+
+} obstacle;
+
 // return sonar altitude in centimeters
 static int16_t read_sonar(void)
 {
 #if CONFIG_SONAR == ENABLED
-    sonar.update();
+    //sonar.update();
 
-    // exit immediately if sonar is disabled
-    if (!sonar_enabled || !sonar.healthy()) {
-        sonar_alt_health = 0;
-        return 0;
-    }
+    //// exit immediately if sonar is disabled
+    //if (!sonar_enabled || !sonar.healthy()) {
+    //    sonar_alt_health = 0;
+    //    return 0;
+    //}
 
-    int16_t temp_alt = sonar.distance_cm();
+    read_sonars();
 
-    if (temp_alt >= sonar.min_distance_cm() && 
-        temp_alt <= sonar.max_distance_cm() * SONAR_RELIABLE_DISTANCE_PCT) {
-        if ( sonar_alt_health < SONAR_ALT_HEALTH_MAX ) {
-            sonar_alt_health++;
-        }
-    }else{
-        sonar_alt_health = 0;
-    }
+    int16_t temp_alt = (int16_t)obstacle.sonar1_distance_cm;//sonar.distance_cm();
 
- #if SONAR_TILT_CORRECTION == 1
-    // correct alt for angle of the sonar
-    float temp = ahrs.cos_pitch() * ahrs.cos_roll();
-    temp = max(temp, 0.707f);
-    temp_alt = (float)temp_alt * temp;
- #endif
+ //   if (temp_alt >= sonar.min_distance_cm() && 
+ //       temp_alt <= sonar.max_distance_cm() * SONAR_RELIABLE_DISTANCE_PCT) 
+    //{
+ //       if ( sonar_alt_health < SONAR_ALT_HEALTH_MAX ) {
+ //           sonar_alt_health++;
+ //       }
+ //   }
+//      else{
+ //       sonar_alt_health = 0;
+ //   }
+
+ //#if SONAR_TILT_CORRECTION == 1
+ //   // correct alt for angle of the sonar
+ //   float temp = ahrs.cos_pitch() * ahrs.cos_roll();
+ //   temp = max(temp, 0.707f);
+ //   temp_alt = (float)temp_alt * temp;
+ //#endif
 
     return temp_alt;
 #else
@@ -79,9 +101,102 @@ static int16_t read_sonar(void)
 #endif
 }
 
+
+
+// read the sonars
+static void read_sonars(void)
+{
+    sonar.update();
+
+    if (!sonar.healthy()) // this makes it possible to disable sonar at runtime
+        return;
+
+    if (sonar.healthy(0))//assume 1st one is altitude
+        obstacle.sonar1_distance_cm = sonar.distance_cm(0);
+
+    if (sonar.healthy(2)) 
+    {
+        // we have 3 rangefinders
+        obstacle.sonar3_distance_cm = sonar.distance_cm(2);
+        obstacle.sonar2_distance_cm = sonar.distance_cm(1);
+        //hard code the trigger distance for now.  Add param later.
+        if (obstacle.sonar3_distance_cm <= 85)//(uint16_t)g.sonar_trigger_cm &&
+            //&& obstacle.sonar2_distance_cm <= (uint16_t)obstacle.sonar2_distance_cm)  
+        {
+            // we have an object on the left
+            if (obstacle.Ldetected_count < 127) 
+                ++obstacle.Ldetected_count;
+        
+            if (obstacle.Ldetected_count > 0)//== g.sonar_debounce) 
+            {
+                gcs_send_text_P(SEVERITY_HIGH, "hazzard left");
+
+                gcs_send_text_fmt(PSTR("SonarL(1) obstacle %u cm"),
+                    (unsigned)obstacle.sonar3_distance_cm);
+            }
+            obstacle.Ldetected_time_ms = hal.scheduler->millis();
+            //obstacle.turn_angle = g.sonar_turn_angle;
+        }
+        if (obstacle.sonar2_distance_cm <= 85)//(uint16_t)g.sonar_trigger_cm) 
+        {
+            // we have an object on the right
+            if (obstacle.Rdetected_count < 127) 
+                obstacle.Rdetected_count++;
+            
+            if (obstacle.Rdetected_count > 0)//== g.sonar_debounce) 
+            {
+                gcs_send_text_P(SEVERITY_HIGH, "hazzard right");
+                gcs_send_text_fmt(PSTR("SonarR(2) obstacle %u cm"),
+                    (unsigned)obstacle.sonar2_distance_cm);
+            }
+            obstacle.Rdetected_time_ms = hal.scheduler->millis();
+            //obstacle.turn_angle = -g.sonar_turn_angle;
+        }
+    }
+    else 
+    {
+        //// we have a single sonar
+        //obstacle.sonar1_distance_cm = sonar.distance_cm(0);
+        //obstacle.sonar2_distance_cm = 0;
+        //if (obstacle.sonar1_distance_cm <= (uint16_t)g.sonar_trigger_cm)  {
+        //    // obstacle detected in front 
+        //    if (obstacle.detected_count < 127) {
+        //        obstacle.detected_count++;
+        //    }
+        //    if (obstacle.detected_count == g.sonar_debounce) {
+        //        gcs_send_text_fmt(PSTR("Sonar obstacle %u cm"),
+        //            (unsigned)obstacle.sonar1_distance_cm);
+        //    }
+        //    obstacle.detected_time_ms = hal.scheduler->millis();
+        //    //obstacle.turn_angle = g.sonar_turn_angle;
+        //}
+    }
+
+    //Log_Write_Sonar();
+
+    // no object detected - reset after the turn time
+    if (obstacle.Rdetected_count > 0//>= g.sonar_debounce &&
+        && hal.scheduler->millis() > obstacle.Rdetected_time_ms + 1000) 
+    {
+        gcs_send_text_fmt(PSTR("hazzard right clear"));
+        obstacle.Rdetected_count = 0;
+        //obstacle.turn_angle = 0;
+    }
+
+    // no object detected - reset after the turn time
+    if (obstacle.Ldetected_count > 0//>= g.sonar_debounce &&
+        && hal.scheduler->millis() > obstacle.Ldetected_time_ms + 1000)
+    {
+        gcs_send_text_fmt(PSTR("hazzard left clear"));
+        obstacle.Ldetected_count = 0;
+        //obstacle.turn_angle = 0;
+    }
+}
+
 // initialise compass
 static void init_compass()
 {
+
     if (!compass.init() || !compass.read()) {
         // make sure we don't pass a broken compass to DCM
         cliSerial->println_P(PSTR("COMPASS INIT ERROR"));
@@ -157,7 +272,6 @@ static void read_battery(void)
     if (battery.has_current()) {
         motors.set_current(battery.current_amps());
     }
-
     // check for low voltage or current if the low voltage check hasn't already been triggered
     // we only check when we're not powered by USB to avoid false alarms during bench tests
     if (!ap.usb_connected && !failsafe.battery && battery.exhausted(g.fs_batt_voltage, g.fs_batt_mah)) {

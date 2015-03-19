@@ -22,7 +22,7 @@
 #include <AP_Param.h>
 
 // Maximum number of range finder instances available on this platform
-#define RANGEFINDER_MAX_INSTANCES 2
+#define RANGEFINDER_MAX_INSTANCES 3
 
 class AP_RangeFinder_Backend; 
  
@@ -31,7 +31,7 @@ class RangeFinder
 public:
     friend class AP_RangeFinder_Backend;
     RangeFinder(void) :
-    primary_instance(0),
+    primary_instance(0),//this sets the 1st range finder as the primary always.  no code changes this value after this line.
     num_instances(0),
     estimated_terrain_height(0)
     {
@@ -76,6 +76,7 @@ public:
     AP_Int16 _min_distance_cm[RANGEFINDER_MAX_INSTANCES];
     AP_Int16 _max_distance_cm[RANGEFINDER_MAX_INSTANCES];
     AP_Int16 _powersave_range;
+    AP_Int16 _ceiling[RANGEFINDER_MAX_INSTANCES];
 
     static const struct AP_Param::GroupInfo var_info[];
     
@@ -136,11 +137,14 @@ public:
         estimated_terrain_height = height;
     }
     
+    int16_t ceiling_cm(uint8_t instance = 0) const {
+        return _ceiling[instance];
+    }
 private:
     RangeFinder_State state[RANGEFINDER_MAX_INSTANCES];
     AP_RangeFinder_Backend *drivers[RANGEFINDER_MAX_INSTANCES];
-    uint8_t primary_instance:2;
-    uint8_t num_instances:2;
+    uint8_t primary_instance;// :2;
+    uint8_t num_instances;// :2;
     float estimated_terrain_height;
 
     void detect_instance(uint8_t instance);
