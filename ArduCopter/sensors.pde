@@ -77,16 +77,14 @@ static int16_t read_sonar(void)
 
     int16_t temp_alt = (int16_t)obstacle.sonar1_distance_cm;//sonar.distance_cm();
 
- //   if (temp_alt >= sonar.min_distance_cm() && 
- //       temp_alt <= sonar.max_distance_cm() * SONAR_RELIABLE_DISTANCE_PCT) 
-    //{
- //       if ( sonar_alt_health < SONAR_ALT_HEALTH_MAX ) {
- //           sonar_alt_health++;
- //       }
- //   }
-//      else{
- //       sonar_alt_health = 0;
- //   }
+    if (temp_alt >= sonar.min_distance_cm(0) && 
+        temp_alt <= sonar.max_distance_cm(0))// * SONAR_RELIABLE_DISTANCE_PCT) 
+    {
+        if ( sonar_alt_health < SONAR_ALT_HEALTH_MAX ) 
+            sonar_alt_health++;
+    }
+    else
+        sonar_alt_health = 0;
 
  //#if SONAR_TILT_CORRECTION == 1
  //   // correct alt for angle of the sonar
